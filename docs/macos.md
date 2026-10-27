@@ -56,3 +56,26 @@ Manual acceptance checklist for an isolated macOS VM (8 GB RAM or less):
 Windows acceptance still needs a Windows VM/PC: click-through after sleep/unlock, taskbar rest/foreground raising, PowerShell window tracking, Start menu/Steam/Epic launching, media keys, winget Ollama setup, NSIS install/startup, and hook install/uninstall. Do not infer these passes from macOS or mocked tests.
 
 Current status: platform code and automated checks are being prepared; complete VM acceptance and signed/notarized distribution are not yet established. Do not describe this as fully validated macOS support until the checklist has actual results.
+
+### Chat UI tests without a model
+
+Inside the disposable VM, start the deterministic fixture:
+
+```sh
+CAPRI_QA_GUEST=1 node tests/fixtures/mock-chat.cjs
+```
+
+If Node is absent, the installed app's bundled runtime can run the fixture:
+
+```sh
+CAPRI_QA_GUEST=1 ELECTRON_RUN_AS_NODE=1 /Applications/Capri.app/Contents/MacOS/Capri tests/fixtures/mock-chat.cjs
+```
+
+In Capri, select **Custom** and enter `http://127.0.0.1:47831/v1`. The model badge must say
+`capri-qa-mock` before sending a test message. The fixture returns fixed streamed Unicode text;
+`long` returns a longer stream for cancellation testing. Only explicit `open TextEdit` and
+`close TextEdit` inputs produce those fixed action tags. Use a disposable document.
+
+This fixture binds only to guest localhost and makes no outbound requests. Do not point UI tests
+at the host's Ollama service: opening an Ollama chat can preload its selected model before a
+message is sent. Keep a separate, empty guest account and avoid real keys and personal files.
