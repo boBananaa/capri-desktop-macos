@@ -10,7 +10,8 @@ const {
 } = require('electron');
 
 const config = require('./config');
-const { TRAY, LANGS } = require('./labels');
+const { TRAY, LANGS, trayLabels } = require('./labels');
+const { desktopArea } = require('./desktop-area');
 const { createBridge } = require('./bridge');
 const { startWindowWatch } = require('./windows');
 const llm = require('./llm');
@@ -21,6 +22,10 @@ const { ASSISTANTS, assistant } = require('./assistants');
 const activeAssistant = () => assistant(config.load().assistant); // Claude Code or Codex
 const activeHooks = () => activeAssistant().hooks;
 const demoSteps = require('../../scripts/demo-sequence');
+
+const MAC = process.platform === 'darwin';
+const TOP_LEVEL = MAC ? 'floating' : 'screen-saver';
+const TOGGLE_KEY = MAC ? 'Command+Alt+C' : 'Control+Alt+C';
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const DEV = process.argv.includes('--dev');
@@ -93,9 +98,7 @@ function targetDisplay() {
 // app to Windows (animated wallpapers pause, notifications wait). `gap`: how much of her window is
 // below the top of the taskbar (0, or its height).
 function overlayArea() {
-  const { workArea, bounds } = targetDisplay();
-  const area = config.load().rest === 'taskbar' ? { ...bounds, y: bounds.y + 1, height: bounds.height - 1 } : workArea;
-  return { area, gap: area.y + area.height - (workArea.y + workArea.height) };
+  return desktopArea(targetDisplay(), config.load().rest, process.platform);
 }
 
 function fitOverlay() {
@@ -112,7 +115,7 @@ function rearmOverlay() {
   if (!overlay || overlay.isDestroyed()) return;
   overlay.setIgnoreMouseEvents(false);
   overlay.setIgnoreMouseEvents(true, { forward: true });
-  overlay.setAlwaysOnTop(true, 'screen-saver');
+  overlay.setAlwaysOnTop(true, TOP_LEVEL);
   fitOverlay();
   sendCommand('rearmed'); // click-through again: she waits for the pointer to be on her
   console.log('[capri] mouse hook set up again');
@@ -124,7 +127,7 @@ function raiseOverlay() {
   for (const wait of [0, 400]) {
     setTimeout(() => {
       if (!overlay || overlay.isDestroyed()) return;
-      overlay.setAlwaysOnTop(true, 'screen-saver');
+      overlay.setAlwaysOnTop(true, TOP_LEVEL);
       overlay.moveTop();
     }, wait);
   }
@@ -157,7 +160,8 @@ function createOverlay() {
     },
   });
 
-  overlay.setAlwaysOnTop(true, 'screen-saver');
+  overlay.setAlwaysOnTop(true, TOP_LEVEL);
+  if (MAC) overlay.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
   overlay.setIgnoreMouseEvents(true, { forward: true });
   overlay.loadURL('capri://app/src/renderer/index.html');
   // always shown: put away, she's still there as her biochip in the corner. Sized again first:
@@ -217,7 +221,7 @@ const DEMO_TERMINAL = `<body style="margin:0;background:#14101c;color:#8f8aa3;fo
 function demoWindow(open) {
   demoWin?.destroy();
   demoWin = null;
-  if (!open || process.platform !== 'win32') return false;
+  if (!open || !['win32', 'darwin'].includes(process.platform)) return false;
   const b = overlay.getBounds();
   demoWin = new BrowserWindow({
     x: Math.round(b.x + b.width * 0.5 - 310), y: Math.round(b.y + b.height * 0.42), width: 620, height: 300,
@@ -260,7 +264,7 @@ function rebuildTray() {
   const cfg = config.load();
   const hookState = activeHooks().status();
   const watched = activeAssistant();
-  const t = Object.fromEntries(Object.entries(TRAY[resolveLang(cfg.lang)]).map(([key, value]) =>
+  const t = Object.fromEntries(Object.entries(trayLabels(resolveLang(cfg.lang), process.platform)).map(([key, value]) =>
     [key, typeof value === 'string' && watched.id !== 'claude' ? value.replaceAll('Claude Code', watched.name) : value]));
 
   const displays = screen.getAllDisplays();
@@ -276,7 +280,7 @@ function rebuildTray() {
     ...(cfg.claude ? [{ label: t.report, click: () => sendCommand('report') }] : []),
     { label: t.talk, click: () => sendCommand('chat') },
     { label: t.custom, click: () => sendCommand('customize') },
-    { label: cfg.visible ? t.hide : t.show, accelerator: 'Ctrl+Alt+C', click: () => toggleVisible() },
+    { label: cfg.visible ? t.hide : t.show, accelerator: TOGGLE_KEY, click: () => toggleVisible() },
     { type: 'separator' },
     {
       label: t.size,
@@ -389,6 +393,7 @@ function rebuildTray() {
     },
     {
       label: t.startup,
+      enabled: !MAC || app.isPackaged, // a development Electron executable is not a login app
       type: 'checkbox',
       checked: app.getLoginItemSettings(loginItemOptions()).openAtLogin,
       click: (item) => app.setLoginItemSettings({ ...loginItemOptions(), openAtLogin: item.checked }),
@@ -402,7 +407,8 @@ function rebuildTray() {
       ...(hookState.installed ? [{ label: t.hooksRemove, click: () => runHooks('uninstall') }] : []),
     ] : []),
     { type: 'separator' },
-    { label: t.quit, click: () => app.quit() },
+    ...(MAC ? [{ label: t.mediaPermissions, click: () => shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility') }] : []),
+    { label: t.quit, accelerator: MAC ? 'Command+Q' : undefined, click: () => app.quit() },
   ]);
   tray.setContextMenu(menu);
   trayMenu = menu;
@@ -494,10 +500,11 @@ async function pickClaudeFolder() {
 }
 
 function createTray() {
-  const icon = nativeImage.createFromPath(path.join(ROOT, 'assets', 'icons', 'tray.png'));
+  let icon = nativeImage.createFromPath(path.join(ROOT, 'assets', 'icons', 'tray.png'));
+  if (MAC) icon = icon.resize({ width: 18, height: 18 });
   tray = new Tray(icon);
   tray.setToolTip('Capri');
-  tray.on('click', () => sendCommand('status'));
+  if (!MAC) tray.on('click', () => sendCommand('status')); // on macOS a click opens its native menu
   rebuildTray();
 }
 
@@ -591,7 +598,10 @@ function registerIpc() {
     if (!llm.PROVIDERS[provider]) return { ok: false, error: 'unknown provider' };
     const before = config.load();
     const patch = { provider };
-    if (key) patch.apiKeys = { ...before.apiKeys, [provider]: setup.sealKey(String(key).trim()) };
+    if (key) {
+      try { patch.apiKeys = { ...before.apiKeys, [provider]: setup.sealKey(String(key).trim()) }; }
+      catch (err) { return { ok: false, error: err.message }; }
+    }
     if (url) patch.customUrl = String(url).trim();
     updateConfig(patch);
     const models = await refreshModels();
@@ -636,7 +646,9 @@ function registerIpc() {
     const d = targetDisplay().bounds;
     const b = tray?.getBounds();
     const icon = b && b.width > 0 ? { x: b.x - o.x, y: b.y - o.y, w: b.width, h: b.height } : null;
-    const corner = { x: d.x + d.width - 150 - o.x, y: d.y + d.height - 44 - o.y, w: 140, h: 40 };
+    const corner = MAC
+      ? { x: d.x + d.width - 180 - o.x, y: d.y - o.y, w: 160, h: 28 }
+      : { x: d.x + d.width - 150 - o.x, y: d.y + d.height - 44 - o.y, w: 140, h: 40 };
     return { icon, corner };
   });
   // her guide: Claude Code's folder (~/.claude) in Explorer, its settings file selected
@@ -753,6 +765,13 @@ function applyRender() {
 }
 
 function main() {
+  if (MAC) {
+    // Finder does not inherit the user's shell PATH. Include common CLI install locations.
+    process.env.PATH = [...new Set([
+      path.join(os.homedir(), '.local', 'bin'), '/opt/homebrew/bin', '/usr/local/bin',
+      ...(process.env.PATH || '').split(path.delimiter),
+    ])].join(path.delimiter);
+  }
   applyRender();
   if (!app.requestSingleInstanceLock()) {
     app.quit();
@@ -763,6 +782,13 @@ function main() {
 
   app.whenReady().then(() => {
     if (!['codex', 'claude'].includes(config.load().assistant)) config.save({ assistant: activeAssistant().id });
+    if (MAC) {
+      app.setActivationPolicy('accessory');
+      Menu.setApplicationMenu(Menu.buildFromTemplate([
+        { label: 'Capri', submenu: [{ role: 'about' }, { type: 'separator' }, { role: 'quit' }] },
+        { role: 'editMenu' }, // native Cmd+C/V, undo, and select all in chat/key fields
+      ]));
+    }
     serveProtocol();
     registerIpc();
     createOverlay();
@@ -782,7 +808,7 @@ function main() {
       onEvent: (evt) => !llm.isChatSession(evt.session_id) && overlay?.webContents.send('claude:event', evt),
       onDebug: DEV ? debugHandler : null,
     });
-    globalShortcut.register('Control+Alt+C', () => toggleVisible());
+    globalShortcut.register(TOGGLE_KEY, () => toggleVisible());
     llm.restoreClaude(readMemory().claude);
     refreshModels(); // for her menu's model list
     setTimeout(() => launch.launchables().catch(() => {}), 20000); // what she can open, before you ask
@@ -794,6 +820,7 @@ function main() {
     powerMonitor.on('unlock-screen', () => setTimeout(rearmOverlay, 1000));
   });
 
+  app.on('activate', () => { if (overlay && !overlay.isDestroyed()) overlay.showInactive(); });
   app.on('will-quit', () => {
     globalShortcut.unregisterAll();
     windowWatch?.stop();
