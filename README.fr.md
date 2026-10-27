@@ -237,10 +237,10 @@ npm install
 npm start
 ```
 
-Garde ce terminal ouvert tant qu'elle tourne. Pas encore testé sur macOS ni Linux : elle devrait démarrer, mais les tours
-avec les fenêtres (s'asseoir dessus, les posséder, t'afficher la réponse de Claude quand tu es ailleurs) ne marchent que
-sous Windows, et sous Linux le calque transparent marche mieux sous X11 (Wayland a du mal avec les fenêtres qui laissent
-passer les clics).
+Garde ce terminal ouvert tant qu'elle tourne. Sur macOS, il faut aussi les outils de ligne de commande d’Apple
+(`xcode-select --install`) pour compiler le petit programme natif. Voir le [guide macOS](docs/macos.md) (en anglais)
+pour les prérequis, la création des paquets et l’état des tests. Linux reste non testé ; le calque transparent fonctionne
+mieux sous X11 et le suivi des fenêtres ainsi que le contrôle des applications n’y sont pas implémentés.
 
 ### La brancher sur Claude Code à la main
 

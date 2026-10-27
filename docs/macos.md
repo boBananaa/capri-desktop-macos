@@ -1,0 +1,58 @@
+# macOS support
+
+Capri keeps the same Electron renderer and hook protocol on both desktop platforms. macOS-specific integrations use a small Swift/AppKit helper; the existing Windows PowerShell helper, Start menu/media-key paths, and NSIS installer remain in place.
+
+## Requirements and running from source
+
+- macOS 13 or newer, Apple Silicon or Intel.
+- Node.js 20 or newer for source development.
+- Apple's Command Line Tools: run `xcode-select --install` once if needed.
+
+```sh
+npm ci
+npm start
+```
+
+`npm start` and `npm run dev` compile the helper for the current architecture before starting Electron. The helper build is a no-op on Windows/Linux. No Homebrew or Swift runtime installation is needed for the packaged app.
+
+The menu is in the macOS menu bar and on Capri's right-click menu. **Command+Option+C** stows/restores her. **Command+Q** quits her. Chat and setup fields use native Edit shortcuts including paste and select all. Login startup is offered in the packaged app only; move it to its intended location before enabling it.
+
+## Native integrations and permissions
+
+- **Window tracking:** Quartz lists window IDs and bounds in logical points, in front-to-back order. Capri does not request screenshots, window titles, or window contents. Maximized/fullscreen windows are not perches. Changes of Space, minimized/closed windows, and windows moved between displays are reflected by polling. This path does not intentionally request Screen Recording or Accessibility permission.
+- **App launching:** discovers `.app` bundles in `/Applications`, `/System/Applications`, and `~/Applications`, plus installed Steam manifests. A launch request must match an item in that inventory; paths are passed as individual arguments, never shell commands. Windows-specific Epic manifests and Start menu shortcuts remain Windows-only.
+- **App closing:** lists regular running applications by bundle ID. A confirmed close asks the app to terminate normally so it can ask to save work. Force quit remains a second explicit confirmation. Finder, system components, Capri/Electron, the coding assistants, and Ollama are excluded.
+- **Media keys:** macOS requires Accessibility access for synthetic media key events. This is requested only after a media action. If denied, chat explains the requirement; the menu links to the relevant System Settings page. Play/pause toggles playback, as on Windows.
+- **Ollama:** detects the app in system/user Applications and common CLI locations, and opens the macOS app on request. Installing it is a manual download from [Ollama](https://ollama.com/download). Starting Claude Code/Codex through Ollama opens Terminal and may ask for macOS Automation permission. Denial is reported in the setup panel.
+- **API keys:** Electron `safeStorage` uses the macOS Keychain. If it is unavailable, new keys are rejected rather than saved in plaintext. Chat history and other preferences are stored locally as ordinary JSON; keys are not returned to the renderer. Sending chat to a remote provider sends its conversation/context to that provider, as on Windows.
+
+The overlay stays out of the menu bar. Screen-edge resting extends to the bottom of the display, with a bottom Dock acting as the ledge. A side Dock remains outside the overlay. Dock auto-hide, Spaces/fullscreen transitions, scaling, and display changes require manual validation on each target setup.
+
+## Packaging
+
+```sh
+npm run dist:mac
+```
+
+This builds a universal helper and universal DMG/ZIP in `dist/`. The helper ships in `Capri.app/Contents/Resources/capri-macos`, outside ASAR, so installed users do not need a compiler. `npm run dist` continues to build the existing Windows NSIS installer.
+
+CI builds ad-hoc-signed macOS test artifacts and a Windows installer; it does not publish a release. Ad-hoc signatures are not Developer ID signatures or notarization. For public distribution, configure electron-builder with the maintainer's signing/notarization credentials. Never add credentials to this repository.
+
+## Validation and review
+
+`npm test` runs hook integration and platform-boundary regressions on macOS, Windows, and Linux in CI. These check the existing Windows routing, macOS point coordinates and negative display origins, Dock/taskbar geometry, translation isolation, launch allowlists, and Terminal error handling. CI packaging is a build check, not proof that the desktop interactions work.
+
+Manual acceptance checklist for an isolated macOS VM (8 GB RAM or less):
+
+- Launch from source, then the packaged app; confirm transparent background and no unexpected permission prompts.
+- Click through empty areas, click/right-click Capri, drag her, open and dismiss panels, type/paste/select all, and press Escape.
+- Test tray actions, stow/restore shortcut, quit/relaunch, saved preferences, and login startup in the installed app.
+- Open a disposable window; perch, move, minimize, restore, and close it. Exercise the demo window.
+- Test normal app launch, confirmed quit with an unsaved document, and cancellation. Use only disposable apps for force quit.
+- Deny then allow media/Terminal permissions; verify visible failure and successful retry.
+- Test first-run Ollama absence, installed-but-stopped state, and model setup separately. Do not use real API keys for UI tests.
+- Test Dock positions/auto-hide, reduced motion, sleep/wake, Spaces/fullscreen, and multiple display/scaling layouts where available.
+
+Windows acceptance still needs a Windows VM/PC: click-through after sleep/unlock, taskbar rest/foreground raising, PowerShell window tracking, Start menu/Steam/Epic launching, media keys, winget Ollama setup, NSIS install/startup, and hook install/uninstall. Do not infer these passes from macOS or mocked tests.
+
+Current status: platform code and automated checks are being prepared; complete VM acceptance and signed/notarized distribution are not yet established. Do not describe this as fully validated macOS support until the checklist has actual results.

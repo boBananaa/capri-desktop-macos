@@ -223,9 +223,10 @@ npm install
 npm start
 ```
 
-Keep that terminal open while she runs. Not tested on macOS or Linux yet: she should start, but the window tricks
-(sitting on your windows, possessing them, showing Claude's answer when you're elsewhere) are Windows-only, and on Linux
-the transparent overlay works best on X11 (Wayland can struggle with click-through windows).
+Keep that terminal open while she runs. On macOS, source builds also need Apple's Command Line Tools
+(`xcode-select --install`) to compile the native helper. See [macOS setup, packaging, and testing](docs/macos.md)
+for requirements and validation status. Linux is still untested; the transparent overlay works best on X11
+(Wayland can struggle with click-through windows), and window tracking and app controls are not implemented there.
 
 ### Hook her up to Claude Code by hand
 
