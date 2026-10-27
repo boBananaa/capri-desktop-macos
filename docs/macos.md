@@ -55,7 +55,7 @@ Manual acceptance checklist for an isolated macOS VM (8 GB RAM or less):
 
 Windows acceptance still needs a Windows VM/PC: click-through after sleep/unlock, taskbar rest/foreground raising, PowerShell window tracking, Start menu/Steam/Epic launching, media keys, winget Ollama setup, NSIS install/startup, and hook install/uninstall. Do not infer these passes from macOS or mocked tests.
 
-Current status: platform code and automated checks are being prepared; complete VM acceptance and signed/notarized distribution are not yet established. Do not describe this as fully validated macOS support until the checklist has actual results.
+Current status: platform code is implemented. [Hosted validation](https://github.com/boBananaa/capri-desktop-macos/actions/runs/40437352424) passed the macOS, Windows, and Linux tests, universal macOS packaging, and Windows installer build. Complete VM acceptance and signed/notarized distribution are not yet established. Do not describe this as fully validated macOS support until the checklist has actual results.
 
 ### Chat UI tests without a model
 
