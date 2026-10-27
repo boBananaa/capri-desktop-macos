@@ -95,6 +95,7 @@ export class Chat {
   async start() {
     const { capri, host, t } = this;
     if (this.open) {
+      if (host.platform === 'darwin') host.focusOverlay(true);
       this.panel.chatInput.focus();
       return;
     }
