@@ -30,6 +30,7 @@ function startWindowWatch({ overlay, onUpdate }) {
   let retry;
   let stopped = false;
   let restarts = 0;
+  let previousApp = null;
   const start = () => {
     if (stopped || overlay.isDestroyed()) return;
     const id = overlay.getMediaSourceId().split(':')[1];
@@ -37,7 +38,11 @@ function startWindowWatch({ overlay, onUpdate }) {
     const lines = readline.createInterface({ input: child.stdout });
     lines.on('line', (line) => {
       if (overlay.isDestroyed()) return;
-      try { onUpdate(toOverlay(JSON.parse(line), overlay.getBounds())); } catch { /* incomplete snapshot */ }
+      try {
+        const snap = JSON.parse(line);
+        if (Number.isInteger(snap.frontPid) && snap.frontPid > 0 && snap.frontPid !== process.pid) previousApp = snap.frontPid;
+        onUpdate(toOverlay(snap, overlay.getBounds()));
+      } catch { /* incomplete snapshot */ }
     });
     child.stderr.on('data', (d) => console.error('[capri] macOS window watch:', String(d).trim()));
     child.on('error', (err) => console.error('[capri] macOS helper:', err.message, '(run npm run native:mac)'));
@@ -48,7 +53,10 @@ function startWindowWatch({ overlay, onUpdate }) {
     });
   };
   start();
-  return { stop() { stopped = true; clearTimeout(retry); child?.kill(); } };
+  return {
+    restoreFocus() { return previousApp ? run('restore-focus', process.pid, previousApp) : Promise.resolve(); },
+    stop() { stopped = true; clearTimeout(retry); child?.kill(); },
+  };
 }
 
 module.exports = { run, startWindowWatch, toOverlay };

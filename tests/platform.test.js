@@ -90,6 +90,28 @@ test('Windows watcher still uses PowerShell, physical-pixel conversion and taskb
   assert.deepEqual(received, { fg: 5, taskbar: true, wins: [{ id: 5, x: 50, y: 50, w: 400, h: 300, max: false }] });
   watch.stop(); assert.equal(killed, true);
 });
+test('macOS panel dismissal remembers the external app across Capri activation', async () => {
+  const child = new EventEmitter(); child.stdout = new PassThrough(); child.stderr = new PassThrough();
+  child.kill = () => {};
+  const calls = []; let received;
+  const mac = load('macos.js', 'darwin', {
+    electron: { app: { isPackaged: true } },
+    'node:child_process': {
+      spawn: () => child,
+      execFile(file, args, _opts, done) { calls.push(args); done(null, '{"ok":true}'); },
+    },
+  });
+  const watch = mac.startWindowWatch({ overlay: {
+    isDestroyed: () => false, getMediaSourceId: () => 'window:42:0',
+    getBounds: () => ({ x: 0, y: 0, width: 1000, height: 800 }),
+  }, onUpdate: (data) => { received = data; } });
+  await watch.restoreFocus(); assert.equal(calls.length, 0);
+  for (const frontPid of [77, 1234]) child.stdout.write(JSON.stringify({ fg: 0, frontPid, wins: [] }) + '\n');
+  await watch.restoreFocus();
+  assert.deepEqual(calls, [['restore-focus', '1234', '77']]);
+  assert.deepEqual(received, { fg: 0, wins: [] }); // process metadata stays in the main process
+  watch.stop();
+});
 test('macOS app launch passes a discovered path as a single argument; unknown paths are rejected', async () => {
   const calls = [];
   const id = "/Applications/QA's Test App.app";

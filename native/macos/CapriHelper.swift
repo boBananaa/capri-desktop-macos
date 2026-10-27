@@ -75,7 +75,17 @@ func snapshot(excluding windowID: Int) -> [String: Any] {
                         "w": rect.width, "h": rect.height, "max": maximized])
         if windows.count >= 40 { break }
     }
-    return ["fg": foreground, "wins": windows]
+    return ["fg": foreground, "frontPid": frontPID ?? 0, "wins": windows]
+}
+
+func restoreFocus(owner: Int32, previous: Int32) {
+    // A dismissed text panel returns to the previous app, unless the user already switched.
+    guard NSWorkspace.shared.frontmostApplication?.processIdentifier == owner,
+          previous != owner, let target = NSRunningApplication(processIdentifier: previous),
+          target.activationPolicy == .regular, !target.isTerminated else {
+        emit(["ok": false]); return
+    }
+    emit(["ok": target.activate(options: [.activateIgnoringOtherApps])])
 }
 
 func watch(windowID: Int, parent: Int32) {
@@ -130,6 +140,10 @@ case "watch" where args.count == 3:
 case "snapshot": emit(snapshot(excluding: Int(args.dropFirst().first ?? "0") ?? 0))
 case "apps": emit(runningApps())
 case "installed": emit(installedApps())
+case "restore-focus" where args.count == 3:
+    if let owner = Int32(args[1]), let previous = Int32(args[2]), owner > 0, previous > 0 {
+        restoreFocus(owner: owner, previous: previous)
+    }
 case "close" where args.count == 3: closeApp(args[1], force: args[2] == "force")
 case "media" where args.count == 2: media(args[1])
 default:

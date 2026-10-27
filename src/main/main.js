@@ -43,6 +43,8 @@ let tray = null;
 let trayMenu = null; // also what she opens when you right-click her
 let demoTimer = null;
 let windowWatch = null;
+let focusRestore = Promise.resolve();
+let focusRequest = 0;
 // the watcher only speaks when something changes: the overlay asks for this when it (re)loads
 let lastWindows = null;
 let chatModels = null; // the provider's models, as last seen (null: not reached)
@@ -626,13 +628,22 @@ function registerIpc() {
   ipcMain.handle('apps:music', (_e, query) => launch.music(query).catch(() => false));
   ipcMain.handle('apps:site', (_e, address) => launch.site(address).catch(() => false));
   // typing to her: the overlay takes the keyboard while the chat is open, and gives it back after
-  ipcMain.on('overlay:focus', (_e, on) => {
+  ipcMain.on('overlay:focus', async (_e, on) => {
     if (!overlay) return;
+    const request = ++focusRequest;
+    if (MAC && on) {
+      await focusRestore; // finish a previous dismissal before reopening the keyboard panel
+      if (request !== focusRequest || !overlay || overlay.isDestroyed()) return;
+    }
     overlay.setFocusable(Boolean(on));
     if (on) {
       if (MAC) app.focus({ steal: true }); // only an explicitly opened text panel takes keyboard focus
       overlay.focus();
-    } else overlay.blur();
+    } else {
+      overlay.blur();
+      if (MAC) focusRestore = (windowWatch?.restoreFocus() || Promise.resolve())
+        .catch((err) => console.error('[capri] restore keyboard focus:', err.message));
+    }
   });
   // her report card's copy button: a picture of that part of the overlay, on the clipboard
   ipcMain.handle('panel:copy', async (_e, rect) => {
