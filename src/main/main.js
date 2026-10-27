@@ -146,6 +146,7 @@ function createOverlay() {
     fullscreenable: false,
     skipTaskbar: true,
     focusable: false,
+    ...(MAC ? { acceptFirstMouse: true } : {}), // pet/panel clicks work while another app is active
     hasShadow: false,
     alwaysOnTop: true,
     type: process.platform === 'win32' ? 'toolbar' : undefined,
@@ -628,8 +629,10 @@ function registerIpc() {
   ipcMain.on('overlay:focus', (_e, on) => {
     if (!overlay) return;
     overlay.setFocusable(Boolean(on));
-    if (on) overlay.focus();
-    else overlay.blur();
+    if (on) {
+      if (MAC) app.focus({ steal: true }); // only an explicitly opened text panel takes keyboard focus
+      overlay.focus();
+    } else overlay.blur();
   });
   // her report card's copy button: a picture of that part of the overlay, on the clipboard
   ipcMain.handle('panel:copy', async (_e, rect) => {
