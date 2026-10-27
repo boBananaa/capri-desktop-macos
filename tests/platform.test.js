@@ -53,6 +53,7 @@ test('macOS translations do not mutate any Windows or assistant wording', async 
     assert.doesNotMatch(mac.guide.icon.hidden, /Windows|\^/);
     assert.doesNotMatch(mac.welcome.readyHow, /Ctrl\+Alt/);
     assert.match(mac.welcome.readyHow, /⌘⌥C/);
+    assert.match(mac.welcome.noClaude, /Mac/);
     assert.equal(JSON.stringify(LINES[lang]), original);
     assert.equal(linesFor(lang, 'claude', 'win32'), LINES[lang]);
     assert.equal(trayLabels(lang, 'win32'), TRAY[lang]);

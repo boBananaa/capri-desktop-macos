@@ -47,7 +47,8 @@ export function platformCopy(base, lang, platform) {
   if (platform !== 'darwin') return base;
   if (cache.has(base)) return cache.get(base);
   const convert = (value) => {
-    if (typeof value === 'string') return value.replaceAll('Ctrl+Alt+C', '⌘⌥C');
+    if (typeof value === 'string') return value.replaceAll('Ctrl+Alt+C', '⌘⌥C')
+      .replace(/\bPCs\b/g, 'Macs').replace(/\bPC\b/g, 'Mac').replaceAll('ПК', 'Mac');
     if (Array.isArray(value)) return value.map(convert);
     if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, convert(v)]));
     return value;
