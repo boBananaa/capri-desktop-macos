@@ -24,5 +24,8 @@ if (process.platform === 'darwin') {
   if (universal) execFileSync('xcrun', ['lipo', '-create', ...outputs, '-output', target]);
   else fs.copyFileSync(outputs[0], target);
   fs.chmodSync(target, 0o755);
+  // electron-builder requires at least a 512px macOS icon. Reuse the existing artwork.
+  execFileSync('/usr/bin/sips', ['-z', '1024', '1024', path.join(root, 'assets/icons/capri.png'),
+    '--out', path.join(dir, 'capri.png')], { stdio: 'pipe' });
   console.log(`[capri] macOS helper: ${archs.join(' + ')}`);
 }

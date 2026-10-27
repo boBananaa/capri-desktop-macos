@@ -16,7 +16,7 @@ function load(name, platform, mocks = {}, env = {}, extraProcess = {}) {
   const localRequire = (id) => Object.hasOwn(mocks, id) ? mocks[id] : realRequire(id);
   const module = { exports: {} };
   const proc = { platform, pid: 1234, env: { ...env }, resourcesPath: '/Capri.app/Contents/Resources', execPath: '/Capri.exe', ...extraProcess };
-  new Function('require', 'module', 'exports', '__dirname', 'process', fs.readFileSync(file, 'utf8'))(
+  new Function('require', 'module', 'exports', '__dirname', 'process', fs.readFileSync(file, 'utf8').replace(/^#![^\n]*\n/, ''))(
     localRequire, module, module.exports, path.dirname(file), proc,
   );
   return module.exports;
@@ -48,7 +48,8 @@ test('macOS translations do not mutate any Windows or assistant wording', async 
     const original = JSON.stringify(LINES[lang]);
     const mac = linesFor(lang, 'codex', 'darwin');
     assert.match(mac.setup.pasteHow, /macOS/);
-    assert.doesNotMatch(JSON.stringify(mac.setup), /Windows|Start menu|winget/i);
+    const strings = (v) => typeof v === 'string' ? [v] : Object.values(v).flatMap(strings);
+    assert.doesNotMatch(strings(mac.setup).join('\n'), /Windows|Start menu|winget/i);
     assert.doesNotMatch(mac.guide.icon.hidden, /Windows|\^/);
     assert.doesNotMatch(mac.welcome.readyHow, /Ctrl\+Alt/);
     assert.match(mac.welcome.readyHow, /⌘⌥C/);

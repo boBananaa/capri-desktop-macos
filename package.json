@@ -88,7 +88,7 @@
       "extendInfo": {
         "NSAppleEventsUsageDescription": "Capri opens coding assistant sessions in Terminal only when you ask."
       },
-      "icon": "assets/icons/capri.png"
+      "icon": "native/bin/capri.png"
     }
   }
 }
