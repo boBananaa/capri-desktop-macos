@@ -31,6 +31,10 @@ function startWindowWatch({ overlay, onUpdate }) {
   let stopped = false;
   let restarts = 0;
   let previousApp = null;
+  let last = null;
+  const send = () => {
+    if (last && !overlay.isDestroyed()) onUpdate(toOverlay(last, overlay.getBounds()));
+  };
   const start = () => {
     if (stopped || overlay.isDestroyed()) return;
     const id = overlay.getMediaSourceId().split(':')[1];
@@ -41,7 +45,8 @@ function startWindowWatch({ overlay, onUpdate }) {
       try {
         const snap = JSON.parse(line);
         if (Number.isInteger(snap.frontPid) && snap.frontPid > 0 && snap.frontPid !== process.pid) previousApp = snap.frontPid;
-        onUpdate(toOverlay(snap, overlay.getBounds()));
+        last = snap;
+        send();
       } catch { /* incomplete snapshot */ }
     });
     child.stderr.on('data', (d) => console.error('[capri] macOS window watch:', String(d).trim()));
@@ -55,6 +60,7 @@ function startWindowWatch({ overlay, onUpdate }) {
   start();
   return {
     restoreFocus() { return previousApp ? run('restore-focus', process.pid, previousApp) : Promise.resolve(); },
+    refresh: send,
     stop() { stopped = true; clearTimeout(retry); child?.kill(); },
   };
 }

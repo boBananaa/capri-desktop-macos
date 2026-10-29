@@ -62,6 +62,7 @@ export function platformCopy(base, lang, platform) {
   result.motion.line = result.motion.line.replaceAll('Windows', 'macOS');
   result.setup.pasteHow = copy.key;
   result.chat.mediaUnavailable = copy.media;
+  result.chat.folders.explorer = 'Finder';
   cache.set(base, result);
   return result;
 }

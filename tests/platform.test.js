@@ -87,7 +87,8 @@ test('Windows watcher still uses PowerShell, physical-pixel conversion and taskb
   assert.ok(invocation.args.includes('Bypass'));
   assert.equal(invocation.args.at(-2), '42');
   assert.equal(dipCalls, 1);
-  assert.deepEqual(received, { fg: 5, taskbar: true, wins: [{ id: 5, x: 50, y: 50, w: 400, h: 300, max: false }] });
+  assert.deepEqual(received, { fg: 5, taskbar: true, ai: [], game: null, usb: [], plug: null,
+    wins: [{ id: 5, x: 50, y: 50, w: 400, h: 300, max: false }] });
   watch.stop(); assert.equal(killed, true);
 });
 test('macOS panel dismissal remembers the external app across Capri activation', async () => {
@@ -116,7 +117,7 @@ test('macOS app launch passes a discovered path as a single argument; unknown pa
   const calls = [];
   const id = "/Applications/QA's Test App.app";
   const launch = load('launch.js', 'darwin', {
-    electron: { shell: {} }, './apps': {},
+    electron: { shell: {}, app: { getPath: () => '/qa/Desktop' } }, './apps': {},
     './macos': { run: async (command) => { assert.equal(command, 'installed'); return [{ name: 'QA Test', kind: 'app', id }]; } },
     'node:fs': { readFileSync() { throw new Error('no Steam'); }, readdirSync() { return []; } },
     'node:child_process': { execFile(file, args, done) { calls.push([file, args]); done(null); } },
@@ -125,6 +126,62 @@ test('macOS app launch passes a discovered path as a single argument; unknown pa
   await launch.launch({ kind: 'app', id });
   assert.deepEqual(calls, [['/usr/bin/open', ['-a', id]]]);
   assert.equal(await launch.media('unrecognized'), false);
+});
+test('macOS watcher refresh remaps unchanged windows after moving the overlay', () => {
+  const child = new EventEmitter(); child.stdout = new PassThrough(); child.stderr = new PassThrough();
+  child.kill = () => {};
+  let origin = 0; let received;
+  const mac = load('macos.js', 'darwin', {
+    electron: { app: { isPackaged: false } }, 'node:child_process': { spawn: () => child },
+  });
+  const watch = mac.startWindowWatch({ overlay: {
+    isDestroyed: () => false, getMediaSourceId: () => 'window:42:0',
+    getBounds: () => ({ x: origin, y: 25, width: 1000, height: 800 }),
+  }, onUpdate: (data) => { received = data; } });
+  child.stdout.write(JSON.stringify({ fg: 7, wins: [{ id: 7, x: 100, y: 100, w: 400, h: 300 }] }) + '\n');
+  assert.equal(received.wins[0].x, 100);
+  origin = 100; watch.refresh();
+  assert.equal(received.wins[0].x, 0); assert.equal(received.wins[0].y, 75);
+  watch.stop();
+});
+test('macOS Finder and Trash use native folder opening and report failure', async () => {
+  const opened = []; let error = '';
+  const launch = load('launch.js', 'darwin', {
+    electron: { app: { getPath: (key) => `/qa/${key}` }, shell: { openPath: async (dir) => { opened.push(dir); return error; } } },
+    'node:os': { homedir: () => '/qa/home' },
+    './macos': { run: async () => [] },
+    'node:fs': { readdirSync: () => [], readFileSync() { throw new Error('no Steam'); } },
+    'node:child_process': { spawn() { throw new Error('must not launch Explorer'); } },
+  });
+  assert.deepEqual(await launch.find('open finder'), { name: 'explorer', kind: 'known', id: 'explorer' });
+  for (const id of ['explorer', 'recycle', 'downloads']) await launch.launch({ kind: 'known', id });
+  assert.deepEqual(opened, ['/qa/home', '/qa/home/.Trash', '/qa/downloads']);
+  error = 'permission denied';
+  await assert.rejects(launch.launch({ kind: 'known', id: 'downloads' }), /permission denied/);
+});
+test('macOS desktop app bundles and scripts require the existing confirmation path', async () => {
+  const launch = load('launch.js', 'darwin', {
+    electron: { app: { getPath: () => '/qa/Desktop' } }, './macos': { run: async () => [] },
+    'node:fs': { readFileSync() { throw new Error('no Steam'); }, readdirSync(dir) {
+      return dir === '/qa/Desktop' ? [{ name: 'QA.app', isDirectory: () => true }] : [];
+    } },
+  });
+  const bundle = await launch.find('open QA');
+  assert.equal(bundle.kind, 'file'); assert.equal(launch.risky(bundle), true);
+  assert.equal(launch.risky({ kind: 'file', id: '/qa/task.command' }), true);
+  assert.equal(launch.risky({ kind: 'file', id: '/qa/readme.pdf' }), false);
+});
+test('macOS file search uses bounded folders without starting Windows Search', async () => {
+  const files = load('files.js', 'darwin', {
+    electron: { app: { getPath: (key) => `/qa/${key}` }, shell: {} },
+    './apps': { powershell() { throw new Error('Windows Search must not run'); } },
+    'node:fs': {
+      readdirSync: (dir) => dir === '/qa/documents' ? [{ name: 'report.pdf', isDirectory: () => false }] : [],
+      statSync: () => ({ mtimeMs: 7 }),
+    },
+  });
+  const result = await files.search({ query: 'report', exts: ['pdf'] });
+  assert.equal(result[0].path, '/qa/documents/report.pdf');
 });
 test('Windows launch and media still use their original AppsFolder and media-key routes', async () => {
   const calls = [];
@@ -140,7 +197,7 @@ test('Windows launch and media still use their original AppsFolder and media-key
   await launch.launch({ kind: 'app', id: 'QA.App' });
   assert.deepEqual(calls[1], ['explorer.exe', ['shell:AppsFolder\\QA.App']]);
   assert.equal(await launch.media('pause'), true);
-  assert.match(calls.at(-1), /179/);
+  assert.match(calls.at(-1), /keybd_event\(179/);
 });
 test('macOS close revalidates app identity before invoking native termination', async () => {
   const calls = [];
