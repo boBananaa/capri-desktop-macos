@@ -40,6 +40,12 @@ This builds a universal helper and universal DMG/ZIP in `dist/`. The helper ship
 
 CI builds ad-hoc-signed macOS test artifacts and a Windows installer; it does not publish a release. Ad-hoc signatures are not Developer ID signatures or notarization. For public distribution, configure electron-builder with the maintainer's signing/notarization credentials. Never add credentials to this repository.
 
+## Performance bounds
+
+The window helper polls every 150 ms, emits only changed snapshots, and includes at most 40 windows. Each snapshot reads display geometry once and serializes JSON once. Concurrent installed-app requests share one scan, with successful inventories cached for ten minutes; failed scans can be retried.
+
+The fallback file search streams directory entries asynchronously and yields to the main event loop every 256 entries. It processes at most 40,000 entries, collects at most 24 candidate matches, descends at most five levels, and returns up to eight results. Hidden and dependency folders are skipped. Windows still tries its search index first; these limits apply when falling back to folder traversal.
+
 ## Validation and review
 
 `npm test` runs hook integration and platform-boundary regressions on macOS, Windows, and Linux in CI. These check the existing Windows routing, macOS point coordinates and negative display origins, Dock/taskbar geometry, translation isolation, launch allowlists, and Terminal error handling. CI packaging is a build check, not proof that the desktop interactions work.
@@ -57,7 +63,7 @@ Manual acceptance checklist for an isolated macOS VM (8 GB RAM or less):
 
 Windows acceptance still needs a Windows VM/PC: click-through after sleep/unlock, taskbar rest/foreground raising, PowerShell window tracking, Start menu/Steam/Epic launching, media keys, winget Ollama setup, NSIS install/startup, and hook install/uninstall. Do not infer these passes from macOS or mocked tests.
 
-Current status (October 28, 2026): the branch incorporates upstream v0.4.4 (`3e6f529`) and its Windows behavior. All 21 automated tests passed locally after integration. Current hosted results and downloadable packages are on the [branch's Actions page](https://github.com/boBananaa/capri-desktop-macos/actions?query=branch%3Amacos-support). Earlier [hosted validation of `5c88ea8`](https://github.com/boBananaa/capri-desktop-macos/actions/runs/40588367181) passed all three OS test jobs and both package builds. Packaged build `b959798` was exercised in an isolated macOS 26.5.1 guest with 8 GiB RAM: transparent launch, a guest-local Custom provider, complete streamed Unicode text, typing immediately after opening chat from the menu bar, and TextEdit launch worked. Provider settings survived package replacement and relaunch.
+Current status (October 28, 2026): the branch incorporates upstream v0.4.4 (`3e6f529`) and its Windows behavior. All 26 automated tests passed locally after integration and the efficiency review, including scan budgets, event-loop responsiveness, directory cleanup, and concurrent discovery/retry. Current hosted results and downloadable packages are on the [branch's Actions page](https://github.com/boBananaa/capri-desktop-macos/actions?query=branch%3Amacos-support). Earlier [hosted validation of `5c88ea8`](https://github.com/boBananaa/capri-desktop-macos/actions/runs/40588367181) passed all three OS test jobs and both package builds. Packaged build `b959798` was exercised in an isolated macOS 26.5.1 guest with 8 GiB RAM: transparent launch, a guest-local Custom provider, complete streamed Unicode text, typing immediately after opening chat from the menu bar, and TextEdit launch worked. Provider settings survived package replacement and relaunch.
 
 Later focus-return and existing-chat refocus corrections have hosted coverage but have not been exercised in the guest. Automated overlay mouse input was unreliable; physical click-through/dragging, cancellation, native editing shortcuts, window tracking, permissions, startup, and the extended desktop checklist remain unverified. Windows interactive acceptance and signed/notarized distribution are also pending. Source review and successful packaging do not establish those passes.
 

@@ -22,6 +22,7 @@ const FILLER = new Set(['player', 'launcher', 'app', 'the', 'for', 'windows', 'd
 const CACHE_MS = 10 * 60 * 1000; // installed apps hardly change
 
 let cache = null; // { at, items }
+let macScan = null; // share discovery while the first native inventory is still being read
 
 const plain = (text) => String(text || '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
 const words = (text) => plain(text).split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 2);
@@ -30,10 +31,12 @@ const words = (text) => plain(text).split(/[^\p{L}\p{N}]+/u).filter((w) => w.len
 async function launchables() {
   if (cache && Date.now() - cache.at < CACHE_MS) return cache.items;
   if (MAC) {
-    const apps = await require('./macos').run('installed');
-    const games = steamGames(path.join(os.homedir(), 'Library', 'Application Support', 'Steam'));
-    cache = { at: Date.now(), items: [...games, ...apps].filter((item) => !SKIP.test(item.name)) };
-    return cache.items;
+    if (!macScan) macScan = require('./macos').run('installed').then((apps) => {
+      const games = steamGames(path.join(os.homedir(), 'Library', 'Application Support', 'Steam'));
+      cache = { at: Date.now(), items: [...games, ...apps].filter((item) => !SKIP.test(item.name)) };
+      return cache.items;
+    }).finally(() => { macScan = null; });
+    return macScan;
   }
   if (!WIN) return [];
   const items = [];

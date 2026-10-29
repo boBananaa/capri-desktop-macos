@@ -2,11 +2,15 @@
 import AppKit
 import ApplicationServices
 
-func emit(_ value: Any) {
-    guard let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]),
-          let line = String(data: data, encoding: .utf8) else { return }
+func emitJSON(_ data: Data) {
+    guard let line = String(data: data, encoding: .utf8) else { return }
     print(line)
     fflush(stdout)
+}
+
+func emit(_ value: Any) {
+    guard let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]) else { return }
+    emitJSON(data)
 }
 
 let protectedNames: Set<String> = [
@@ -55,6 +59,11 @@ func snapshot(excluding windowID: Int) -> [String: Any] {
     let rows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
         as? [[String: Any]] ?? []
     let frontPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
+    // Display geometry is shared by every window in this snapshot.
+    let displays = NSScreen.screens.map { screen -> (bounds: CGRect, workHeight: CGFloat) in
+        let id = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID ?? 0
+        return (CGDisplayBounds(id), screen.visibleFrame.height)
+    }
     var foreground = 0
     var windows: [[String: Any]] = []
     for row in rows {
@@ -65,11 +74,10 @@ func snapshot(excluding windowID: Int) -> [String: Any] {
               let rect = CGRect(dictionaryRepresentation: bounds), rect.width >= 200, rect.height >= 120 else { continue }
         if foreground == 0, row[kCGWindowOwnerPID as String] as? Int32 == frontPID { foreground = id }
         // Quartz and Electron both use logical points with a top-left primary-display origin.
-        let maximized = NSScreen.screens.contains { screen in
-            let cgID = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID ?? 0
-            let full = CGDisplayBounds(cgID)
+        let maximized = displays.contains { display in
+            let full = display.bounds
             return abs(rect.minX - full.minX) < 2 && abs(rect.width - full.width) < 2
-                && rect.height >= screen.visibleFrame.height - 2
+                && rect.height >= display.workHeight - 2
         }
         windows.append(["id": id, "x": rect.minX, "y": rect.minY,
                         "w": rect.width, "h": rect.height, "max": maximized])
@@ -94,7 +102,7 @@ func watch(windowID: Int, parent: Int32) {
         autoreleasepool {
             let value = snapshot(excluding: windowID)
             if let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]), data != previous {
-                emit(value)
+                emitJSON(data)
                 previous = data
             }
         }

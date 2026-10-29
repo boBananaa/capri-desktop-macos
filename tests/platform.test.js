@@ -127,6 +127,28 @@ test('macOS app launch passes a discovered path as a single argument; unknown pa
   assert.deepEqual(calls, [['/usr/bin/open', ['-a', id]]]);
   assert.equal(await launch.media('unrecognized'), false);
 });
+test('concurrent macOS app requests share discovery and failed scans can be retried', async () => {
+  let scans = 0; let finish; let fail;
+  const launch = load('launch.js', 'darwin', {
+    electron: { shell: {} }, './apps': {},
+    './macos': { run: () => {
+      scans++;
+      return new Promise((resolve, reject) => { finish = resolve; fail = reject; });
+    } },
+    'node:fs': { readFileSync() { throw new Error('no Steam'); }, readdirSync() { return []; } },
+  });
+  const failed = [launch.launchables(), launch.launchables()];
+  assert.equal(scans, 1);
+  fail(new Error('inventory unavailable'));
+  assert.ok((await Promise.allSettled(failed)).every((r) => r.status === 'rejected'));
+  const pending = [launch.launchables(), launch.launchables(), launch.launchables()];
+  assert.equal(scans, 2);
+  const apps = [{ name: 'QA Test', kind: 'app', id: '/Applications/QA.app' }];
+  finish(apps);
+  assert.deepEqual(await Promise.all(pending), [apps, apps, apps]);
+  assert.deepEqual(await launch.launchables(), apps);
+  assert.equal(scans, 2);
+});
 test('macOS watcher refresh remaps unchanged windows after moving the overlay', () => {
   const child = new EventEmitter(); child.stdout = new PassThrough(); child.stderr = new PassThrough();
   child.kill = () => {};
@@ -178,12 +200,94 @@ test('macOS file search uses bounded folders without starting Windows Search', a
     electron: { app: { getPath: (key) => `/qa/${key}` }, shell: {} },
     './apps': { powershell() { throw new Error('Windows Search must not run'); } },
     'node:fs': {
-      readdirSync: (dir) => dir === '/qa/documents' ? [{ name: 'report.pdf', isDirectory: () => false }] : [],
+      promises: { opendir: async (dir) => dir === '/qa/documents' ? [{ name: 'report.pdf', isDirectory: () => false }] : [] },
       statSync: () => ({ mtimeMs: 7 }),
     },
   });
   const result = await files.search({ query: 'report', exts: ['pdf'] });
   assert.equal(result[0].path, '/qa/documents/report.pdf');
+});
+test('folder search streams real directories and excludes hidden/dependency trees', async (t) => {
+  const root = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'capri-files-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  for (const folder of ['documents', 'documents/nested', 'documents/.hidden', 'documents/node_modules']) {
+    fs.mkdirSync(path.join(root, folder), { recursive: true });
+  }
+  for (const file of ['documents/nested/report.pdf', 'documents/.hidden/report.pdf', 'documents/node_modules/report.pdf']) {
+    fs.writeFileSync(path.join(root, file), 'QA');
+  }
+  const files = load('files.js', 'darwin', {
+    electron: { app: { getPath: (key) => path.join(root, key) }, shell: {} }, './apps': {},
+  });
+  const results = await files.search({ query: 'report', exts: ['pdf'] });
+  assert.deepEqual(results.map((r) => r.path), [path.join(root, 'documents/nested/report.pdf')]);
+});
+test('large folder searches yield and stop at the entry budget, closing the iterator', async () => {
+  let visited = 0; let opened = 0; let closed = 0; let yieldedAt = 0;
+  const tick = new Promise((resolve) => setImmediate(() => { yieldedAt = visited; resolve(); }));
+  const files = load('files.js', 'darwin', {
+    'node:path': path.posix,
+    electron: { app: { getPath: (key) => `/qa/${key}` }, shell: {} }, './apps': {},
+    'node:fs': {
+      promises: { opendir: async () => {
+        opened++;
+        return (async function* () {
+          try {
+            for (let i = 0; i < 50000; i++) {
+              visited++;
+              yield { name: i === 40000 ? 'report.pdf' : `other-${i}.pdf`, isDirectory: () => false };
+            }
+          } finally { closed++; }
+        })();
+      } },
+      statSync() { throw new Error('out-of-budget match must not be returned'); },
+    },
+  });
+  assert.deepEqual(await files.search({ query: 'report' }), []);
+  await tick;
+  assert.ok(yieldedAt > 0 && yieldedAt < 40000, `event loop yielded at ${yieldedAt}`);
+  assert.ok(visited <= 40001); // iterator may read the next entry before the loop checks its budget
+  assert.equal(opened, 1); assert.equal(closed, 1);
+});
+test('folder searches stop collecting after enough matches and skip unreadable roots', async () => {
+  let visited = 0; let closed = 0; let opened = 0;
+  const files = load('files.js', 'darwin', {
+    'node:path': path.posix,
+    electron: { app: { getPath: (key) => `/qa/${key}` }, shell: {} }, './apps': {},
+    'node:fs': {
+      promises: { opendir: async (dir) => {
+        opened++;
+        if (dir === '/qa/desktop') throw new Error('permission denied');
+        return (async function* () {
+          try {
+            for (let i = 0; i < 100; i++) {
+              visited++;
+              yield { name: `report-${i}.pdf`, isDirectory: () => false };
+            }
+          } finally { closed++; }
+        })();
+      } }, statSync: () => ({ mtimeMs: 7 }),
+    },
+  });
+  const results = await files.search({ query: 'report' });
+  assert.equal(results.length, 8);
+  assert.ok(results.every((r) => r.path.startsWith('/qa/documents/')));
+  assert.ok(visited <= 25); assert.equal(opened, 2); assert.equal(closed, 1);
+});
+test('successful Windows Search results bypass the folder walk', async () => {
+  let indexed = 0;
+  const files = load('files.js', 'win32', {
+    'node:path': path.win32,
+    electron: { app: { getPath: () => 'C:\\Users\\QA' }, shell: {} },
+    './apps': { powershell: async () => { indexed++; return 'file:C:/Users/QA/Documents/report.pdf'; } },
+    'node:fs': {
+      promises: { opendir() { throw new Error('indexed results must not scan folders'); } },
+      statSync: () => ({ mtimeMs: 7 }),
+    },
+  });
+  const result = await files.search({ query: 'report' });
+  assert.equal(result[0].path, 'C:\\Users\\QA\\Documents\\report.pdf');
+  assert.equal(indexed, 1);
 });
 test('Windows launch and media still use their original AppsFolder and media-key routes', async () => {
   const calls = [];
