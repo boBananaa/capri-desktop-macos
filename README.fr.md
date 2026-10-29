@@ -340,6 +340,7 @@ pour Claude Code. Ensuite :
 
 Elle en suit un seul à la fois, celui choisi dans son menu, et ses répliques, son guide et son chat prennent son nom.
 Elle ne fait que regarder : quand Codex ou Antigravity demande une autorisation, c'est toujours là-bas que tu réponds.
+Les vérifications d'autorisation de Codex sont de simples messages d'état : le hook se déclenche avant la décision et ne permet pas à Capri de savoir si une réponse humaine reste nécessaire. Ses questions explicites déclenchent toujours une alerte.
 En ligne de commande : `npm run hooks:codex:install` ou `npm run hooks:agy:install` (`:uninstall` pour les retirer),
 et `npm run test:hooks` lance les tests des deux adaptateurs. **Surveiller** › **Rien, juste me tenir compagnie** :
 elle ne parle plus d'aucun.

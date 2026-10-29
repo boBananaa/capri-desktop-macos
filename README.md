@@ -323,8 +323,11 @@ for Claude Code. Then:
 - **Antigravity**: start a new conversation. Her hooks go in `~/.gemini/config/hooks.json`.
 
 She follows one of them at a time, the one picked in her menu, and her lines, her guide and her chat use its name.
-She only watches: when Codex or Antigravity asks for approval, you still answer it there. From the command line:
-`npm run hooks:codex:install` or `npm run hooks:agy:install` (`:uninstall` to remove them), and `npm run test:hooks`
+She only watches: when Codex or Antigravity asks for approval, you still answer it there.
+
+Codex permission checks appear as brief status messages: that hook runs before resolution and cannot tell Capri whether a human prompt remains. Explicit Codex questions still raise an attention alert.
+
+From the command line: `npm run hooks:codex:install` or `npm run hooks:agy:install` (`:uninstall` to remove them), and `npm run test:hooks`
 runs the tests of both adapters. **Watch** › **Nothing, just keep me company**: she stops talking about any of them.
 
 ### Try it without Claude
