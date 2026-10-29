@@ -147,6 +147,7 @@ test('macOS watcher refresh remaps unchanged windows after moving the overlay', 
 test('macOS Finder and Trash use native folder opening and report failure', async () => {
   const opened = []; let error = '';
   const launch = load('launch.js', 'darwin', {
+    'node:path': path.posix, // simulate macOS path rules when this test runs on Windows CI
     electron: { app: { getPath: (key) => `/qa/${key}` }, shell: { openPath: async (dir) => { opened.push(dir); return error; } } },
     'node:os': { homedir: () => '/qa/home' },
     './macos': { run: async () => [] },
@@ -173,6 +174,7 @@ test('macOS desktop app bundles and scripts require the existing confirmation pa
 });
 test('macOS file search uses bounded folders without starting Windows Search', async () => {
   const files = load('files.js', 'darwin', {
+    'node:path': path.posix,
     electron: { app: { getPath: (key) => `/qa/${key}` }, shell: {} },
     './apps': { powershell() { throw new Error('Windows Search must not run'); } },
     'node:fs': {
