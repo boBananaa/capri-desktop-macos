@@ -208,7 +208,8 @@ test('macOS file search uses bounded folders without starting Windows Search', a
   assert.equal(result[0].path, '/qa/documents/report.pdf');
 });
 test('folder search streams real directories and excludes hidden/dependency trees', async (t) => {
-  const root = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'capri-files-'));
+  // Windows' system temp folder is under AppData, which search deliberately excludes.
+  const root = fs.mkdtempSync(path.join(__dirname, 'capri-files-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   for (const folder of ['documents', 'documents/nested', 'documents/.hidden', 'documents/node_modules']) {
     fs.mkdirSync(path.join(root, folder), { recursive: true });
