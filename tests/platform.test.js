@@ -28,6 +28,41 @@ function browserModule(file) {
 }
 
 const display = { bounds: { x: 0, y: 0, width: 1440, height: 900 }, workArea: { x: 0, y: 25, width: 1440, height: 805 } };
+test('Mac text panels can reclaim native focus after switching apps without reopening chat', async (t) => {
+  globalThis.innerWidth = 1440; globalThis.innerHeight = 900;
+  globalThis.matchMedia = () => ({ matches: false });
+  t.after(() => { delete globalThis.innerWidth; delete globalThis.innerHeight; delete globalThis.matchMedia; });
+  const { Panel } = await import(browserModule(path.resolve(__dirname, '../src/renderer/js/panel.js')));
+  const element = () => ({
+    hidden: false, listeners: new Map(), children: new Map(),
+    addEventListener(type, fn, capture) { this.listeners.set(type, { fn, capture }); },
+    querySelector(selector) {
+      if (!this.children.has(selector)) this.children.set(selector, element());
+      return this.children.get(selector);
+    },
+    contains(target) { return target === this; },
+  });
+  let focused = false; let requests = 0;
+  const panel = new Panel({ panel: element(), ticker: element(), labels: {},
+    focusChat: () => { focused = true; requests++; } });
+  panel.current = { chat: {} };
+  const down = panel.el.listeners.get('pointerdown');
+  assert.equal(down.capture, true); // input/form click propagation cannot suppress activation
+  for (let i = 0; i < 2; i++) {
+    focused = false; // another app now owns the keyboard; DOM focus may not change
+    down.fn({ button: 0, target: panel.chatInput });
+    assert.equal(focused, true);
+  }
+  assert.equal(requests, 2);
+  down.fn({ button: 2, target: panel.chatInput });
+  down.fn({ button: 0, target: panel.chatClose });
+  panel.el.hidden = true; down.fn({ button: 0, target: panel.chatInput });
+  panel.el.hidden = false; panel.suspended = true; down.fn({ button: 0, target: panel.chatInput });
+  panel.suspended = false; panel.current = { kind: 'info' }; down.fn({ button: 0, target: panel.el });
+  assert.equal(requests, 2);
+  const windowsPanel = new Panel({ panel: element(), ticker: element(), labels: {} });
+  assert.equal(windowsPanel.el.listeners.has('pointerdown'), false);
+});
 test('macOS resting leaves menu bar clear and extends over bottom Dock only', () => {
   assert.deepEqual(desktopArea(display, 'corner', 'darwin'), { area: display.workArea, gap: 0 });
   assert.deepEqual(desktopArea(display, 'taskbar', 'darwin'), {

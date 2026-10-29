@@ -878,6 +878,7 @@ function registerIpc() {
     if (on) {
       if (MAC) app.focus({ steal: true }); // only an explicitly opened text panel takes keyboard focus
       overlay.focus();
+      if (MAC) overlay.webContents.focus(); // return the keyboard to the input's renderer as well
     } else {
       overlay.blur();
       if (MAC) focusRestore = (windowWatch?.restoreFocus() || Promise.resolve())
